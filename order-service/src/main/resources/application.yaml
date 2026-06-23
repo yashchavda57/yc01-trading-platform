@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: trading-platform
+
+app:
+  account-type: "VIP"
