@@ -1,13 +1,13 @@
-package com.chavd.yc01.trading_platform;
+package com.chavd.yc01.orderservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class TradingPlatformApplication {
+public class OrderServiceApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(TradingPlatformApplication.class, args);
+		SpringApplication.run(OrderServiceApplication.class, args);
 	}
 
 }
