@@ -1,6 +1,6 @@
 spring:
   application:
-    name: trading-platform
+    name: order-service
   profiles:
     active: prod
 

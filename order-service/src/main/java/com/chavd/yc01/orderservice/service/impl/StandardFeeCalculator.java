@@ -1,6 +1,6 @@
-package com.chavd.yc01.trading_platform.service.impl;
+package com.chavd.yc01.orderservice.service.impl;
 
-import com.chavd.yc01.trading_platform.service.FeeCalculator;
+import com.chavd.yc01.orderservice.service.FeeCalculator;
 
 import java.math.BigDecimal;
 

@@ -238,7 +238,7 @@ Key things to understand in `JwtTokenProvider`:
 **What to do:**
 
 Create `order-service/pom.xml`, then move all files from root `src/` → `order-service/src/`.
-Rename package `com.chavd.yc01.trading_platform` → `com.chavd.yc01.orderservice` in all files.
+Rename package `com.chavd.yc01.orderservice` → `com.chavd.yc01.orderservice` in all files.
 
 **`pom.xml`** dependencies:
 - `spring-boot-starter-web`
@@ -652,9 +652,9 @@ volumes:
 | 1 | Convert root `pom.xml` to aggregator | ✅ Done |
 | 2 | Scaffold `shared/common-exceptions` | ✅ Done |
 | 3 | Scaffold `shared/common-dto` | ✅ Done |
-| 4 | Scaffold `shared/common-security` (JwtTokenProvider) | ⬜ |
-| 5 | `order-service` stub (move existing code) | ⬜ |
-| 6 | Scaffold `user-service` (full auth) | ⬜ |
+| 4 | Scaffold `shared/common-security` (JwtTokenProvider) | ✅ Done |
+| 5 | `order-service` stub (move existing code) | ✅ Done |
+| 6 | Scaffold `user-service` (full auth) | ✅ Done |
 | 7 | Scaffold `api-gateway` (JWT filter + routing) | ⬜ |
 | 8 | `infrastructure/docker-compose.yml` | ⬜ |
 

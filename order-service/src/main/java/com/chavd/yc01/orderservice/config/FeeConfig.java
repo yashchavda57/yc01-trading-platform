@@ -1,9 +1,9 @@
-package com.chavd.yc01.trading_platform.config;
+package com.chavd.yc01.orderservice.config;
 
-import com.chavd.yc01.trading_platform.service.FeeCalculator;
-import com.chavd.yc01.trading_platform.service.impl.PremiumFeeCalculator;
-import com.chavd.yc01.trading_platform.service.impl.StandardFeeCalculator;
-import com.chavd.yc01.trading_platform.service.impl.VipFeeCalculator;
+import com.chavd.yc01.orderservice.service.FeeCalculator;
+import com.chavd.yc01.orderservice.service.impl.PremiumFeeCalculator;
+import com.chavd.yc01.orderservice.service.impl.StandardFeeCalculator;
+import com.chavd.yc01.orderservice.service.impl.VipFeeCalculator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

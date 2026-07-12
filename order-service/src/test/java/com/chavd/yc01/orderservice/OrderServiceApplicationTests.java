@@ -1,10 +1,10 @@
-package com.chavd.yc01.trading_platform;
+package com.chavd.yc01.orderservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class TradingPlatformApplicationTests {
+class OrderServiceApplicationTests {
 
 	@Test
 	void contextLoads() {
