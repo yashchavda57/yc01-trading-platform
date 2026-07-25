@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-must-be-at-least-32-characters!}
+    access-token-expiration-ms: 900000
+    refresh-token-expiration-ms: 604800000
+  public-paths:
+    - /api/v1/auth/register
+    - /api/v1/auth/login
+    - /actuator/health
+
+logging:
+  level:
+    org.springframework.cloud.gateway: TRACE
+    reactor.netty.http.client: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info

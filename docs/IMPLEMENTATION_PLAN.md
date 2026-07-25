@@ -655,7 +655,7 @@ volumes:
 | 4 | Scaffold `shared/common-security` (JwtTokenProvider) | ✅ Done |
 | 5 | `order-service` stub (move existing code) | ✅ Done |
 | 6 | Scaffold `user-service` (full auth) | ✅ Done |
-| 7 | Scaffold `api-gateway` (JWT filter + routing) | ⬜ |
+| 7 | Scaffold `api-gateway` (JWT filter + routing) | ✅ Done |
 | 8 | `infrastructure/docker-compose.yml` | ⬜ |
 
 ---
