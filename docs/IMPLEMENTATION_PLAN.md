@@ -656,7 +656,203 @@ volumes:
 | 5 | `order-service` stub (move existing code) | ✅ Done |
 | 6 | Scaffold `user-service` (full auth) | ✅ Done |
 | 7 | Scaffold `api-gateway` (JWT filter + routing) | ✅ Done |
-| 8 | `infrastructure/docker-compose.yml` | ⬜ |
+| 8 | `infrastructure/docker-compose.yml` | ✅ Done |
+
+---
+
+## Phase 1 Summary — What Was Built and Why
+
+Phase 1 converted a single-module project into a Maven multi-module monorepo and delivered a working
+auth path through an API gateway: `register` → `login` → authenticated request → `refresh` → `logout`,
+backed by Postgres + Redis in Docker. Below is what each step covered and the concepts behind it —
+useful as an interview map: "walk me through your auth flow" should trace directly through this table.
+
+| Step | What it covered | Core concepts to be able to explain |
+|---|---|---|
+| 1 — Aggregator `pom.xml` | Converted root POM to `packaging=pom`, added `<dependencyManagement>` with the Spring Cloud BOM, declared `<modules>` | **Maven multi-module builds**: parent POM has no source, just governs versions and child module list. `dependencyManagement` vs `dependencies` — the former pins versions without pulling the artifact in; children opt in. Why a BOM (Bill of Materials) matters for keeping Spring Cloud + Spring Boot versions compatible across every module. |
+| 2 — `common-exceptions` | Shared exception hierarchy: `TradingPlatformException` base with a `statusCode`, four subclasses (`ResourceNotFoundException` 404, `UnauthorizedException` 401, `DuplicateResourceException` 409, `ValidationException` 400) | **Centralized error semantics**: every service throws the same exception types so a `@ControllerAdvice` can map exception → HTTP status in one place instead of every controller doing manual status codes. Plain library JAR (no `spring-boot-maven-plugin`) — the distinction between a runnable Spring Boot app and a shared dependency JAR. |
+| 3 — `common-dto` | `ApiResponse<T>` generic response envelope with `success`, `message`, `data`, `timestamp` | **Consistent API contract** across all microservices — clients always parse the same envelope shape regardless of which service answered. `@JsonInclude(NON_NULL)` to omit empty fields from JSON. Static factory methods (`ok()`, `error()`) over public constructors — controls what states are constructible. |
+| 4 — `common-security` (`JwtTokenProvider`) | Pure-Java JWT issuing/parsing utility, no Spring dependency | **JWT mechanics**: HMAC-SHA signing (`Keys.hmacShaKeyFor`), access vs refresh token asymmetry (refresh has no `role` claim — narrower privilege), `isTokenValid` does *cryptographic* validation only (no DB hit) so it's fast and stateless. Why this class is framework-agnostic: unit-testable without a Spring context, reusable from both `user-service` and `api-gateway` (gateway needs to validate tokens without calling the DB). |
+| 5 — `order-service` stub | Moved pre-existing root code into its own module | **Module extraction** without behavior change — proving the aggregator restructure didn't break anything before adding new services on top of it. |
+| 6 — `user-service` (full auth) | Registration, login, refresh, logout, `/users/me`; Postgres + Flyway + Redis + Spring Security | **Password hashing**: BCrypt (cost factor 12) — one-way, salted, slow-by-design to resist brute force. **Stateless auth**: `SessionCreationPolicy.STATELESS` + JWT means no server-side session store for the access token itself. **Refresh token revocation**: refresh tokens are *also* stored in Redis (`refresh:{email}` key) precisely because JWTs can't be invalidated once issued — logout deletes the Redis key, and `refreshToken()` checks the presented token against Redis so a stolen/old refresh token stops working after logout. **Custom filter chain**: `JwtAuthenticationFilter extends OncePerRequestFilter`, registered `addFilterBefore(..., UsernamePasswordAuthenticationFilter.class)` — runs once per request, populates `SecurityContextHolder` before Spring Security's own auth filter would look for credentials. **Optimistic locking** (`@Version` on `User`) vs pessimistic (`SELECT FOR UPDATE`, used later in wallet-service) — different concurrency strategies for different contention profiles. **Flyway**: versioned, forward-only migrations (`V1__create_users_table.sql`) as the source of truth for schema, `ddl-auto: validate` so Hibernate never auto-generates DDL in a real environment. |
+| 7 — `api-gateway` | Reactive Spring Cloud Gateway, JWT filter, Redis rate limiting, routing | **Reactive vs servlet stack**: gateway uses WebFlux (`Mono<Void>`, non-blocking `ServerWebExchange`) because a gateway multiplexes many concurrent long-lived connections — blocking threads-per-request doesn't scale here. **Edge authentication pattern**: the gateway validates the JWT signature/expiry only, then forwards trust via `X-User-Email` / `X-User-Role` headers — downstream services trust the gateway rather than re-validating, which is why the gateway must be the only public entry point. **Token-bucket rate limiting** via Redis — distributed rate limiting works across multiple gateway instances because the bucket state lives in Redis, not in-process. |
+| 8 — `docker-compose.yml` | Postgres + Redis containers with healthchecks | **Healthchecks as a proxy, not a guarantee**: `pg_isready` checks "is the server accepting connections," not "can my actual app user authenticate with the right permissions" — a wrong `-U` in the healthcheck can still report `healthy` while masking a real credential mismatch. This is why we deliberately traced the difference between "container is healthy" and "verified `trading_user` can actually connect and own the migrated schema" via `psql`. |
+
+**End-to-end flow you should be able to whiteboard:** `POST /api/v1/auth/register` → gateway (public path, skips JWT filter) → `user-service` hashes password with BCrypt, inserts row via Flyway-migrated schema, issues access+refresh JWT, stores refresh token in Redis → client calls `GET /api/v1/users/me` with `Bearer <token>` → gateway's reactive filter validates signature/expiry, injects `X-User-Email`/`X-User-Role` headers → `user-service`'s own `JwtAuthenticationFilter` (defense in depth — it re-validates too, doesn't blindly trust the gateway header) sets `SecurityContextHolder` → controller returns profile.
+
+---
+
+## Phase 1.5 — Service Discovery + Centralized Config (bridge before Phase 2)
+
+**Why this exists between Phase 1 and Phase 2:** `api-gateway` currently hardcodes
+`http://localhost:8081` for `user-service` in `GatewayRoutesConfig`. That's fine for one service on
+one machine. Phase 2 adds `market-data-service`, `order-service` (full), `matching-engine`, and
+`wallet-service` — four more hardcoded URLs waiting to happen, plus config duplication (JWT secret,
+Redis host) across every `application.yml`. Doing this now means every Phase 2 service is built
+*correctly* from day one instead of retrofitted later.
+
+**Concept — Config Server (Externalized Configuration pattern):**
+Instead of each service bundling its own `application.yml` values, a `config-server` module serves
+config to every other service on startup from one source of truth (a Git repo, in the classic setup).
+Problem it solves: today, if you rotate `JWT_SECRET`, you must edit it in both `user-service` and
+`api-gateway` and keep them in sync manually. Centralizing removes that duplication and gives you
+per-environment profiles (`application-dev.yml`, `application-prod.yml`) without rebuilding services.
+
+**Concept — Service Discovery (Eureka):**
+A **client-server** registry pattern. `service-discovery` runs the Eureka *server*; every other
+service is a Eureka *client* — it self-registers on startup (instance ID, host, port) and sends
+periodic heartbeats to stay listed. Consumers (like `api-gateway`) no longer hardcode
+`http://localhost:8081` — they ask "where is `user-service`?" and get back a live list of instances,
+enabling client-side load balancing across multiple instances of the same service. Interview point:
+Eureka is **AP, not CP** (CAP theorem) — on network partition it keeps serving its last-known
+registry rather than refusing to answer, because a stale-but-available registry is more useful in a
+live trading system than a strongly-consistent one that's temporarily down.
+
+### Step 9 — Scaffold `config-server`
+
+**Concept recap before building:** this is a standalone Spring Boot app annotated
+`@EnableConfigServer`. It reads config files (named `{service-name}.yml`, e.g. `user-service.yml`)
+from a backing repo and serves them over HTTP; other services become **config clients** that fetch
+their config from it at startup, before their own `application.yml` even fully applies.
+
+**What to do:**
+```
+config-server/
+├── pom.xml
+└── src/main/
+    ├── java/com/chavd/yc01/configserver/ConfigServerApplication.java
+    └── resources/
+        ├── application.yml
+        └── config-repo/               ← native/local backend to start (no Git needed yet)
+            ├── user-service.yml
+            ├── api-gateway.yml
+            └── order-service.yml
+```
+
+**`pom.xml`** dependency: `spring-cloud-config-server`. Include `spring-boot-maven-plugin` (runnable).
+
+**`ConfigServerApplication.java`**: `@SpringBootApplication @EnableConfigServer`.
+
+**`application.yml`** (config-server itself, port convention: `8888`):
+```yaml
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config-repo
+  profiles:
+    active: native   # native = read from local filesystem/classpath; swap for 'git' later
+```
+
+Move the service-specific values (JWT secret, Redis host, DB URL) out of each service's
+`application.yml` into `config-repo/{service-name}.yml` — each service keeps only its `port`,
+`spring.application.name`, and the `spring.config.import` pointer (added in Step 11).
+
+**Verify:** start `config-server`, hit `http://localhost:8888/user-service/default` — should return
+JSON with the properties you moved into `config-repo/user-service.yml`.
+
+---
+
+### Step 10 — Scaffold `service-discovery` (Eureka server)
+
+**Concept recap before building:** this module *is* the registry — it holds no business logic, just
+the Eureka server. Self-preservation mode (Eureka's default) is worth understanding: if it stops
+receiving enough heartbeats network-wide, it assumes a network partition (not that every client died)
+and stops evicting instances — a safety behavior appropriate for local dev, but worth tuning down
+awareness of in a real deployment discussion.
+
+**What to do:**
+```
+service-discovery/
+├── pom.xml
+└── src/main/
+    ├── java/com/chavd/yc01/servicediscovery/ServiceDiscoveryApplication.java
+    └── resources/application.yml
+```
+
+**`pom.xml`** dependency: `spring-cloud-starter-netflix-eureka-server`.
+
+**`ServiceDiscoveryApplication.java`**: `@SpringBootApplication @EnableEurekaServer`.
+
+**`application.yml`** (port convention: `8761`, the Eureka default):
+```yaml
+server:
+  port: 8761
+
+spring:
+  application:
+    name: service-discovery
+
+eureka:
+  client:
+    register-with-eureka: false   # the server doesn't register with itself
+    fetch-registry: false
+  server:
+    enable-self-preservation: true
+```
+
+**Verify:** start `service-discovery`, open `http://localhost:8761` in a browser — the Eureka
+dashboard should load with "No instances available" (nothing's registered yet — that's Step 11).
+
+---
+
+### Step 11 — Retrofit `user-service`, `api-gateway`, `order-service` as Eureka + Config clients
+
+**Concept recap before building:** each service adds `spring-cloud-starter-netflix-eureka-client` (to
+register itself) and `spring-cloud-starter-config` (to fetch config from `config-server`). The
+gateway's routing then changes from a hardcoded IP to a **logical service name**:
+`uri: "lb://USER-SERVICE"` — `lb://` tells Spring Cloud LoadBalancer to resolve `USER-SERVICE` via
+Eureka at request time and pick an instance, instead of a fixed `http://localhost:8081`.
+
+**What to do, per service:**
+1. Add `spring-cloud-starter-netflix-eureka-client` + `spring-cloud-starter-config` to each `pom.xml`.
+2. Trim each service's `application.yml` to just `server.port`, `spring.application.name`, and:
+   ```yaml
+   spring:
+     config:
+       import: "configserver:http://localhost:8888"
+   eureka:
+     client:
+       service-url:
+         defaultZone: http://localhost:8761/eureka
+   ```
+3. In `api-gateway`'s `GatewayRoutesConfig`, change:
+   ```java
+   .uri("http://localhost:8081")
+   ```
+   to:
+   ```java
+   .uri("lb://USER-SERVICE")   // matches user-service's spring.application.name, case-insensitive
+   ```
+4. Add `@EnableDiscoveryClient` is implicit with the starter on the classpath (no annotation needed
+   in recent Spring Cloud versions) — confirm via the Eureka dashboard instead of relying on an
+   annotation being present.
+
+**Verify:**
+1. Start in order: `config-server` → `service-discovery` → `user-service` → `api-gateway`.
+2. Open `http://localhost:8761` — both `USER-SERVICE` and `API-GATEWAY` should appear as registered
+   instances (status `UP`).
+3. Repeat the Step 7 gateway verification (`register` → `login` → `/users/me`) — should work
+   identically, but now routed via Eureka lookup instead of a hardcoded URL.
+4. Kill `user-service`, wait ~30s, check the Eureka dashboard — it should show the instance as
+   removed (or `DOWN` if self-preservation kicked in) rather than the gateway silently still trying
+   the dead address forever.
+
+---
+
+## Progress Tracker (Phase 1.5)
+
+| Step | Description | Status |
+|---|---|---|
+| 9 | Scaffold `config-server` | ✅ Done |
+| 10 | Scaffold `service-discovery` (Eureka server) | ✅ Done |
+| 11 | Retrofit `user-service`, `api-gateway`, `order-service` as Eureka + Config clients | ⬜ |
 
 ---
 
