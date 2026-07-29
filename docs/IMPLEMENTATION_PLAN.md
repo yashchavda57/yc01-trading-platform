@@ -852,7 +852,7 @@ Eureka at request time and pick an instance, instead of a fixed `http://localhos
 |---|---|---|
 | 9 | Scaffold `config-server` | ✅ Done |
 | 10 | Scaffold `service-discovery` (Eureka server) | ✅ Done |
-| 11 | Retrofit `user-service`, `api-gateway`, `order-service` as Eureka + Config clients | ⬜ |
+| 11 | Retrofit `user-service`, `api-gateway`, `order-service` as Eureka + Config clients | ✅ Done |
 
 ---
 
