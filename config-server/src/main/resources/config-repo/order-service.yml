@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: order-service
+
+app:
+  account-type: "VIP"

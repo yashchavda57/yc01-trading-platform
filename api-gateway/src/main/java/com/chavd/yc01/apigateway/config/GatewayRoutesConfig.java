@@ -16,10 +16,10 @@ public class GatewayRoutesConfig {
         return builder.routes()
                 .route("user-service-auth", r -> r
                         .path("/api/v1/auth/**")
-                        .uri("http://localhost:8081"))
+                        .uri("lb://USER-SERVICE"))
                 .route("user-service-users", r -> r
                         .path("/api/v1/users/**")
-                        .uri("http://localhost:8081"))
+                        .uri("lb://USER-SERVICE"))
                 .build();
     }
 

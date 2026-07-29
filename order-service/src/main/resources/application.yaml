@@ -1,6 +1,13 @@
 spring:
   application:
     name: order-service
+  config:
+    import: "configserver:http://localhost:8888"
 
-app:
-  account-type: "VIP"
+eureka:
+    client:
+      service-url:
+        defaultZone: http://localhost:8761/eureka/
+    instance:
+      prefer-ip-address: true
+
