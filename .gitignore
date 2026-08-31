@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Personal dev journal (local only, not for GitHub) ###
+dev-journal/
