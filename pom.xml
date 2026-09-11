@@ -50,6 +50,7 @@
         <module>api-gateway</module>
         <module>user-service</module>
         <module>order-service</module>
+        <module>market-data-service</module>
         <module>config-server</module>
         <module>service-discovery</module>
     </modules>
