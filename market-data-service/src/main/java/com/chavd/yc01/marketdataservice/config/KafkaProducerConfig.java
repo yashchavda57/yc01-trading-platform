@@ -20,11 +20,6 @@ public class KafkaProducerConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    /**
-     * Injects Spring Boot's autoconfigured Jackson 3 JsonMapper (java.time support
-     * is built into Jackson 3's databind, no JavaTimeModule needed) instead of
-     * letting JacksonJsonSerializer build its own bare JsonMapper.
-     */
     @Bean
     public ProducerFactory<String, MarketTickEvent> tickProducerFactory(JsonMapper jsonMapper) {
         Map<String, Object> config = Map.of(
