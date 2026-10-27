@@ -14,7 +14,7 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 
 import java.util.Map;
 
@@ -23,8 +23,8 @@ import java.util.Map;
  * @KafkaListener (order-service and market-data-service only produce;
  * matching-engine uses the raw kafka-clients consumer, not spring-kafka).
  * Three separate typed container factories, one per event class, since
- * JsonDeserializer needs to know its target type up front (type headers are
- * disabled -- producers across this project write plain JSON with no
+ * JacksonJsonDeserializer needs to know its target type up front (type headers
+ * are disabled -- producers across this project write plain JSON with no
  * embedded Java type info). ErrorHandlingDeserializer wraps each one so a
  * genuinely unparseable message (a poison pill) fails just that record
  * instead of killing the whole listener container -- CLAUDE.md calls for a
@@ -70,7 +70,7 @@ public class KafkaConsumerConfig {
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"
         );
 
-        JsonDeserializer<T> jsonDeserializer = new JsonDeserializer<>(targetType);
+        JacksonJsonDeserializer<T> jsonDeserializer = new JacksonJsonDeserializer<>(targetType);
         jsonDeserializer.addTrustedPackages("com.chavd.yc01.common.dto.event");
         jsonDeserializer.setUseTypeHeaders(false);
 
