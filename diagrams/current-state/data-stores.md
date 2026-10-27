@@ -6,10 +6,11 @@ concerns, see `../target-state/data-stores.md`).
 
 ```mermaid
 flowchart LR
-    subgraph PgContainer["trading-postgres container (one Postgres instance, 3 databases)"]
+    subgraph PgContainer["trading-postgres container (one Postgres instance, 4 databases)"]
         UsersDB[("trading_users")]
         OrdersDB[("trading_orders")]
         MatchingDB[("trading_matching_engine<br/>(order_book_snapshots table)")]
+        WalletsDB[("trading_wallets<br/>(wallets, fund_holds, ledger_entries)")]
     end
 
     subgraph TsContainer["trading-timescaledb container"]
@@ -18,7 +19,7 @@ flowchart LR
 
     subgraph RedisContainer["trading-redis container (one instance, key-prefixed)"]
         Sessions[("refresh tokens<br/>(user-service)")]
-        PriceCache[("price:{symbol}, 5s TTL<br/>(market-data-service)")]
+        PriceCache[("price:{symbol}, 5s TTL<br/>(market-data-service, read by wallet-service<br/>for MARKET order estimates)")]
         Idempotency[("idempotency:order:{key}, 24h TTL<br/>(order-service)")]
     end
 
@@ -29,16 +30,24 @@ flowchart LR
     Matching["matching-engine"] --> MatchingDB
     MarketData["market-data-service"] --> MarketDataDB
     MarketData --> PriceCache
+    Wallet["wallet-service"] --> WalletsDB
+    Wallet -. reads .-> PriceCache
 ```
 
 ## Notes
 
-- **One Postgres container, three databases** (`trading_users`,
-  `trading_orders`, `trading_matching_engine`) — each service still owns its
-  own database exclusively (no cross-database queries), just sharing one
-  physical container for local-dev simplicity. `infrastructure/postgres-init/`
-  has the init scripts that create the second and third databases on a fresh
-  volume.
+- **One Postgres container, four databases** (`trading_users`,
+  `trading_orders`, `trading_matching_engine`, `trading_wallets`) — each
+  service still owns its own database exclusively (no cross-database
+  queries), just sharing one physical container for local-dev simplicity.
+  `infrastructure/postgres-init/` has the init scripts that create each
+  additional database on a fresh volume.
+- **wallet-service is the first cross-service Redis *read*** (not just a
+  same-service cache) — it reads market-data-service's `price:{symbol}` key
+  to estimate the freeze amount for a MARKET order that has no limit price on
+  the event itself. This is a deliberate, narrow coupling (one key, read-only)
+  rather than a service boundary violation; worth naming if asked about
+  service coupling in an interview.
 - **One Redis instance, key-namespaced per service** (`price:`, `idempotency:order:`,
   plus user-service's refresh-token keys) rather than separate Redis
   containers per service — again a local-dev simplification, not a

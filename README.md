@@ -8,7 +8,7 @@ senior backend interviews. Full scope and architecture rationale live in
 
 ## Current status
 
-**Phase 2 (Core Trading), Step 16 of 17.** See
+**Phase 2 (Core Trading), Step 17 of 17 — Phase 2 nearly complete.** See
 [`dev-journal/CHECKPOINT.md`](dev-journal/CHECKPOINT.md) for the authoritative,
 continuously-updated step-by-step status, and
 [`dev-journal/INDEX.md`](dev-journal/INDEX.md) for a write-up of every step
@@ -26,11 +26,16 @@ Built and verified:
 - `matching-engine` — pure-Java (no framework) order book with price-time
   priority matching, per-instrument locking, JMH-measured throughput
   (~790k-1.24M ops/sec, see [Step 16](dev-journal/steps/step16-matching-engine.md))
+- `wallet-service` — double-entry ledger, pessimistic (`SELECT FOR UPDATE`)
+  wallet locking, fund holds on order placement, verified idempotent trade
+  settlement (see [Step 17](dev-journal/steps/step17-wallet-service.md))
 
-Not yet built: `wallet-service`, `portfolio-service`, `risk-service`,
-`notification-service`, `report-service`, Kubernetes/Helm, observability
-stack (Prometheus/Grafana/ELK/Zipkin), JMH/Gatling load testing beyond the
-matching-engine benchmark above.
+Not yet built: `portfolio-service`, `risk-service`, `notification-service`,
+`report-service`, Kubernetes/Helm, observability stack
+(Prometheus/Grafana/ELK/Zipkin), JMH/Gatling load testing beyond the
+matching-engine benchmark above. Also still missing: a real producer for the
+`order.updated` Kafka topic (neither `matching-engine` nor `order-service`
+emits it yet, even though `wallet-service` already consumes it).
 
 ## Diagrams
 
