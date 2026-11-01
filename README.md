@@ -8,9 +8,9 @@ senior backend interviews. Full scope and architecture rationale live in
 
 ## Current status
 
-**Phase 2 (Core Trading), Step 17 of 17 — Phase 2 nearly complete.** See
-[`dev-journal/CHECKPOINT.md`](dev-journal/CHECKPOINT.md) for the authoritative,
-continuously-updated step-by-step status, and
+**Phase 2 (Core Trading) complete; Phase 3 (Business Logic) started —
+`portfolio-service` built and live-verified.** See [`dev-journal/CHECKPOINT.md`](dev-journal/CHECKPOINT.md)
+for the authoritative, continuously-updated step-by-step status, and
 [`dev-journal/INDEX.md`](dev-journal/INDEX.md) for a write-up of every step
 landed so far (what was built, why, and the concepts it demonstrates).
 
@@ -29,13 +29,18 @@ Built and verified:
 - `wallet-service` — double-entry ledger, pessimistic (`SELECT FOR UPDATE`)
   wallet locking, fund holds on order placement, verified idempotent trade
   settlement (see [Step 17](dev-journal/steps/step17-wallet-service.md))
+- `portfolio-service` — CQRS (Postgres write side, Caffeine L1 + Redis L2
+  read side), weighted-average cost basis on BUY fills, realized P&L booked
+  as an append-only fact at SELL time, verified idempotent settlement and a
+  graceful fallback when the live price cache is empty (see
+  [Step 18](dev-journal/steps/step18-portfolio-service.md))
 
-Not yet built: `portfolio-service`, `risk-service`, `notification-service`,
-`report-service`, Kubernetes/Helm, observability stack
-(Prometheus/Grafana/ELK/Zipkin), JMH/Gatling load testing beyond the
-matching-engine benchmark above. Also still missing: a real producer for the
-`order.updated` Kafka topic (neither `matching-engine` nor `order-service`
-emits it yet, even though `wallet-service` already consumes it).
+Not yet built: `risk-service`, `notification-service`, `report-service`,
+Kubernetes/Helm, observability stack (Prometheus/Grafana/ELK/Zipkin),
+JMH/Gatling load testing beyond the matching-engine benchmark above. Also
+still missing: a real producer for the `order.updated` Kafka topic (neither
+`matching-engine` nor `order-service` emits it yet, even though
+`wallet-service` already consumes it).
 
 ## Diagrams
 
