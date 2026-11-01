@@ -6,11 +6,12 @@ concerns, see `../target-state/data-stores.md`).
 
 ```mermaid
 flowchart LR
-    subgraph PgContainer["trading-postgres container (one Postgres instance, 4 databases)"]
+    subgraph PgContainer["trading-postgres container (one Postgres instance, 5 databases)"]
         UsersDB[("trading_users")]
         OrdersDB[("trading_orders")]
         MatchingDB[("trading_matching_engine<br/>(order_book_snapshots table)")]
         WalletsDB[("trading_wallets<br/>(wallets, fund_holds, ledger_entries)")]
+        PortfoliosDB[("trading_portfolios<br/>(holdings, realized_pnl_entries)")]
     end
 
     subgraph TsContainer["trading-timescaledb container"]
@@ -21,6 +22,7 @@ flowchart LR
         Sessions[("refresh tokens<br/>(user-service)")]
         PriceCache[("price:{symbol}, 5s TTL<br/>(market-data-service, read by wallet-service<br/>for MARKET order estimates)")]
         Idempotency[("idempotency:order:{key}, 24h TTL<br/>(order-service)")]
+        HoldingsCache[("portfolio:holdings:{userId}, 5min TTL<br/>(portfolio-service L2)")]
     end
 
     User["user-service"] --> UsersDB
@@ -32,16 +34,27 @@ flowchart LR
     MarketData --> PriceCache
     Wallet["wallet-service"] --> WalletsDB
     Wallet -. reads .-> PriceCache
+    Portfolio["portfolio-service"] --> PortfoliosDB
+    Portfolio --> HoldingsCache
+    Portfolio -. reads .-> PriceCache
 ```
 
 ## Notes
 
-- **One Postgres container, four databases** (`trading_users`,
-  `trading_orders`, `trading_matching_engine`, `trading_wallets`) — each
-  service still owns its own database exclusively (no cross-database
-  queries), just sharing one physical container for local-dev simplicity.
-  `infrastructure/postgres-init/` has the init scripts that create each
-  additional database on a fresh volume.
+- **One Postgres container, five databases** (`trading_users`,
+  `trading_orders`, `trading_matching_engine`, `trading_wallets`,
+  `trading_portfolios`) — each service still owns its own database
+  exclusively (no cross-database queries), just sharing one physical
+  container for local-dev simplicity. `infrastructure/postgres-init/` has
+  the init scripts that create each additional database on a fresh volume.
+- **portfolio-service is the second cross-service Redis *read*** (after
+  wallet-service) — it reads `price:{symbol}` to compute unrealized P&L, the
+  same key market-data-service writes and wallet-service already reads. It
+  also *writes* its own `portfolio:holdings:{userId}` key, which no other
+  service reads — that one's purely this service's own L2 cache, not a
+  shared contract. Verified live, including confirming the key is actually
+  populated in Redis itself, not just served from the JVM's local Caffeine
+  cache — see Step 18's journal entry.
 - **wallet-service is the first cross-service Redis *read*** (not just a
   same-service cache) — it reads market-data-service's `price:{symbol}` key
   to estimate the freeze amount for a MARKET order that has no limit price on

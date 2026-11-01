@@ -9,6 +9,7 @@ flowchart LR
     Order["order-service"]
     Matching["matching-engine"]
     Wallet["wallet-service"]
+    Portfolio["portfolio-service"]
 
     MarketTicks{{"market.ticks<br/>key: symbol"}}
     OrderPlaced{{"order.placed<br/>key: symbol"}}
@@ -24,6 +25,7 @@ flowchart LR
 
     Matching -- produces --> TradeExecuted
     TradeExecuted -- "consumes (settles trade)" --> Wallet
+    TradeExecuted -- "consumes (updates holdings + realized P&L)" --> Portfolio
 
     OrderUpdated -.no producer yet.-> OrderUpdated
     OrderUpdated -- "consumes (releases hold on cancel/reject)" --> Wallet
@@ -35,7 +37,7 @@ flowchart LR
 |---|---|---|---|
 | `market.ticks` | market-data-service | *(none)* | Produced, unconsumed. risk-service (target) doesn't exist yet. |
 | `order.placed` | order-service (outbox) | matching-engine, wallet-service | **Fully wired and verified** (Step 15/16/17) |
-| `trade.executed` | matching-engine | wallet-service | **Fully wired and verified** (Step 17) |
+| `trade.executed` | matching-engine | wallet-service, portfolio-service | **Fully wired and verified** on both sides (Step 17, Step 18) |
 | `order.updated` | *(not implemented)* | wallet-service | Consumer built and contract-verified (Step 17), but **no producer exists** — matching-engine and order-service both still need to emit this |
 | `notification.events` | *(not implemented)* | — | notification-service doesn't exist yet |
 
@@ -58,3 +60,10 @@ flowchart LR
   isn't one yet. This is the same verification technique used for
   matching-engine in Step 16, applied here because the upstream producer
   genuinely doesn't exist, not as a shortcut around building one.
+- **portfolio-service IS idempotent on `trade.executed`**: the same SELL
+  message published twice was verified to book realized P&L exactly once
+  (holding quantity and `realizedPnl` unchanged on replay, confirmed via the
+  DB unique index on `realized_pnl_entries.trade_id`). A real noise bug was
+  found during this same verification pass (a fully-clamped, zero-quantity
+  sell was writing a zero-effect ledger row) and fixed — see Step 18's
+  journal entry.
